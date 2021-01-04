@@ -1,0 +1,13 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"target": "ES5",
+		"esModuleInterop": true,
+		"moduleResolution": "node",
+		"noEmit": true,
+		"lib": [],
+		"types": []
+	},
+	"compileOnSave": false
+}

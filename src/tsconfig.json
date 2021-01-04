@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"target": "ESNext",
+		"esModuleInterop": true,
+		"moduleResolution": "node",
+		"noEmit": true
+	},
+	"compileOnSave": false,
+	"exclude": [
+		"../types.d.ts"
+	]
+}

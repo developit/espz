@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<title>home-app</title>
+<link rel="icon" href="data:">
+<script type="module">
+	import { h, html, useReducer, useMemo, useCallback, render } from 'https://unpkg.com/htm/preact/standalone.mjs';
+
+	const api = async (u, o) => await (await fetch('/api' + u, o)).json();
+
+	function useMachine(machine, init) {
+		const [state, a] = useReducer(machine, useMemo(() => {
+			const a = p => Promise.resolve().then(() => action(p));
+			a.with = (type, data) => event => a({ type, data, event, action: a });
+			return machine(init, { type: '@@init', action: a });
+		}, []));
+		const c = useMemo(() => new Map, []);
+		const action = useCallback(p => ((p.action = action), a(p)), [a]);
+		action.with = useCallback((type, data) => {
+			const key = type + '\0' + data;
+			if (!c.has(key)) c.set(key, e => action({ type, data: data === undefined ? e : data, event: e, action }));
+			return c.get(key);
+		}, []);
+		return [state, action];
+	}
+
+	function machine(state, { type, data, event, action }) {
+		switch (type) {
+			case 'set': return { ...state, [data]: event };
+			case 'init':
+				action.with('all:update')();
+				return { info: {}, receiver: {} }
+			case 'all:update':
+				action.with('info:update')();
+				action.with('receiver:update')();
+				break;
+			case 'info:update':
+				api('/info').then(action.with('set', 'info'));
+				break;
+			case 'receiver:update':
+				api('/receiver').then(action.with('set', 'receiver'));
+				break;
+			case 'receiver:power':
+				fetch('/api/receiver/power', { method: 'POST', body: JSON.stringify({ on: data }) }).then(() => {
+					setTimeout(action.with('receiver:update'), 1000);
+				});
+				break;
+			default:
+				console.warn('Unknown action "' + type + '":', data, event);
+		}
+		return state;
+	}
+
+	function App() {
+		const [{ info, receiver }, action] = useMachine(machine);
+		useEffect(() => {
+			setInterval(action.with('info:update'), 1000);
+		}, []);
+		const recv = receiver?.Main_Zone?.Basic_Status;
+		const mem = info?.memory;
+		const memPercent = (mem?.usage / mem?.total) * 100 | 0;
+		return html`
+			<header>
+				<button onClick=${action.with('update')}>Update Info</button>
+				<button onClick=${action.with('receiver:power', true)}>Turn On</button>
+				<button onClick=${action.with('receiver:power', false)}>Turn Off</button>
+			</header>
+			<div>
+				<div>
+					Reciever: ${recv?.Power_Control?.Power}<br />
+					Input: ${recv?.Input?.Input_Sel}<br />
+					Volume: ${Math.round(100 * Math.pow(10, (recv?.Volume?.Lvl?.Val || -100) / 10))}%<br />
+				</div>
+				<div>
+					CPU: ${info?.device?.state?.cpuFrequency}mHz<br />
+					Memory: <meter value=${memPercent}>${memPercent}%</meter> \${mem?.usage}b / ${mem?.total}b<br />
+					WiFi: connected to ${info?.wifi?.details?.ssid} as ${info?.wifi?.hostname} (${2 * (info?.wifi?.details?.rssi + 100)}%)
+				</div>
+			</div>
+			<main class="cols">
+				<section>
+				<h5>D1 Mini:</h5>
+				<pre>${JSON.stringify(info, null, 2)}</pre>
+				</section>
+				<section>
+				<h5>Receiver:</h5>
+				<pre>${JSON.stringify(receiver, null, 2)}</pre>
+				</section>
+			</main>
+			`;
+	}
+	render(h(App), document.body);
+</script>
+<style>
+	html {
+		font: 100%/1.2 system-ui;
+		height: 100%;
+	}
+
+	html,
+	body,
+	main,
+	section {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		margin: 0;
+	}
+
+	.cols {
+		flex-direction: row;
+	}
+
+	h5 {
+		margin: 0;
+		color: #468;
+	}
+
+	pre {
+		font-size: 10px;
+		color: #555;
+		line-height: 1;
+	}
+</style>
