@@ -1,4 +1,5 @@
 import { connect } from 'net';
+import { Readable } from 'stream';
 
 export default class Board {
 	cmdCache = new Map();
@@ -14,6 +15,8 @@ export default class Board {
 	constructor({ type, address }) {
 		this.type = type;
 		this.address = address;
+		this.outputBuffer = '';
+		this.output = new Readable({ encoding: 'ascii', read(){} });
 	}
 
 	async init() {
@@ -41,6 +44,7 @@ export default class Board {
 				this.cmdCache.clear();
 				this.pendingConnection = null;
 				this.connection = c;
+				c.on('data', this._handleData.bind(this));
 				resolve(c);
 			});
 			c.on('error', err => {
@@ -53,9 +57,26 @@ export default class Board {
 		});
 	}
 
+	_handleData(data) {
+		this.outputBuffer += data.toString('ascii');
+		// don't commit until the device returns a prompt:
+		if (this.outputBuffer[this.outputBuffer.length-1] !== '>') return;
+		this.outputBuffer = this.outputBuffer
+			.replace(/(^|\n)(?:>.*?\r\n(?:\:.*?\r\n)*|Execution Interrupted during event processing\.\r\n)/g, '$1')
+		const lines = /.*?\r\n/g;
+		const isRepl = /^(?:=|\$[RE]\$\d+ )/;
+		let line;
+		let index = 0;
+		while (line = lines.exec(this.outputBuffer)) {
+			index = lines.lastIndex;
+			if (isRepl.test(line[0])) continue;
+			this.output.push(line[0]);
+		}
+		if (index) this.outputBuffer = this.outputBuffer.substring(index);
+	}
+
 	_execCached(expression) {
-		if (this.cmdCache.has(expression))
-			return this.cmdCache.get(expression);
+		if (this.cmdCache.has(expression)) return this.cmdCache.get(expression);
 		const r = this._exec(expression);
 		this.cmdCache.set(expression, r);
 		return r;
@@ -68,13 +89,13 @@ export default class Board {
 		});
 	}
 
+	_written = [];
 	_write(/**@type {string}*/ expression) {
 		return new Promise((resolve, reject) => {
+			this._written.push(expression);
 			this.connection.write(expression, err => {
-				if (err)
-					reject(err);
-				else
-					resolve();
+				if (err) reject(err);
+				else resolve();
 			});
 		});
 	}
@@ -100,20 +121,22 @@ export default class Board {
 		const id = ++this.cmdId;
 		try {
 			//console.log(`WRITE: try{print('$R$${id}',JSON.stringify(\n${cmd.expression}\n));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}`);
-			await this._write(`try{print('$R$${id}',JSON.stringify(\n${cmd.expression}\n));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
+			await this._write(`Promise.resolve().then(()=>eval(${JSON.stringify(cmd.expression)})).then(r=>print('$R$${id}',JSON.stringify(r))).catch(e=>print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack})));\n`);
+			// await this._write(`try{let $_=eval(${JSON.stringify(cmd.expression)});Promise.resolve().then(()=>$_).then(r=>print('$R$${id}',JSON.stringify(r)));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
+			// await this._write(`try{print('$R$${id}',JSON.stringify(eval(${JSON.stringify(cmd.expression)})));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
 		} catch (e) {
 			console.error(`Failed to execute command ${cmd.expression}: ${e}`);
 			cmd.reject(e);
 			return this._processQueue();
 		}
 		let buffer = '';
-		const reg = new RegExp('\n\\$(R|E)\\$' + id + ' ([^\n]+)');
+		const reg = new RegExp('(?:\\r\\n|^)\\$(R|E)\\$' + id + ' (.*?)\\r\\n');
 		const handler = data => {
 			buffer += data.toString('ascii');
 			reg.lastIndex = 0;
 			const result = reg.exec(buffer);
 			if (!result) return;
-			const value = JSON.parse(result[2]);
+			const value = result[2] === 'undefined' ? undefined : JSON.parse(result[2]);
 			if (result[1] === 'E') {
 				const err = new Error(value.message);
 				err.stack = value.stack;

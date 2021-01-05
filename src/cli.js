@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
+import { inspect } from 'util';
 import sade from 'sade';
 import kleur from 'kleur';
 import Board from './board.js';
-import compile from './compile.js';
+import compile, { transpile } from './compile.js';
 
 const DOCS_URL = 'http://www.espruino.com/json/espruino.json';
 const BOARDS_URL = 'http://www.espruino.com/json/boards.json';
@@ -38,23 +39,65 @@ async function repl({ board }) {
 		input: process.stdin,
 		output: process.stdout
 	});
-	rl.setPrompt('> ');
+	rl.setPrompt(kleur.magenta('>') + ' ');
 	rl.prompt();
 	rl.on('line', async line => {
+		count = 0;
 		rl.pause();
+		let code = line;
 		try {
-			console.log(await board._exec(line));
+			code = transpile(code, null, false);
 		} catch (e) {
-			console.error(e);
+			process.stdout.write(kleur.red('─'.repeat(e.loc.column) + '⌃') + '\n');
+			process.stdout.write(kleur.red('ⓧ  ' + e.message.split('\n')[0].replace(/^unknown: /,'')) + '\n');
+			rl.resume();
+			rl.prompt(true);
+			return;
+		}
+		try {
+			process.stdout.write(kleur.dim('↤ ') + inspect(await board._exec(code), true, undefined, process.stdout.hasColors()) + '\n');
+		} catch (e) {
+			let msg = kleur.red('ⓧ  ' + e);
+			if (e && e.stack) {
+				const m = e.stack.match(/^\s*at line (\d+) col (\d+)\n.*\n\s*\^\s*\n(at line 1 col \d+\n.*eval\(".*|in function called from system)\n/);
+				if (m) {
+					process.stdout.write(kleur.red('┌' + '─'.repeat(m[2]|0) + '⌃') + '\n');
+				} else {
+					msg += '\n' + kleur.red(kleur.dim(e.stack));
+				}
+			}
+			process.stdout.write(`${msg}\n`);
 		}
 		rl.resume();
 		rl.prompt(false);
-	})
+	});
 	let count = 0;
-	rl.on("SIGINT", () => {
-		if (++count >= 2) process.emit('SIGINT');
-		else board._write(`\x03`);
-		//process.emit("SIGINT");
+	let pos;
+	rl.on('SIGCONT', () => {
+		console.log('SIGCONT');
+	});
+	async function reset() {
+		rl.pause();
+		await board._write(`\x03`);
+		rl.resume();
+		rl.prompt(false);
+	}
+	board.output.on('data', data => {
+		process.stdout.write(kleur.white(data));
+	});
+	rl.on("SIGINT", async () => {
+		// console.log(pos, { cursor: rl.cursor, line: rl.line });
+		if (pos && (pos.cursor !== rl.cursor || pos.line !== rl.line)) {
+			count = 0;
+		}
+		pos = { cursor: rl.cursor, line: rl.line };
+		if (++count >= 2) {
+			rl.close();
+			process.stdout.write('\n');
+			return process.emit('SIGINT');
+		}
+		process.stdout.write('\b\b' + kleur.dim('↤ ') + kleur.cyan(`Ctrl+C`) + kleur.dim(` sent reset. ${kleur.italic(`(press Ctrl+C again to exit)`)}`) + '\n');
+		reset();
 	});
 	return new Promise(resolve => {
 		rl.on('close', resolve);

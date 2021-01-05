@@ -22,6 +22,45 @@ function getModulesList() {
 	});
 }
 
+export function transpile(code, filename, compress) {
+	return babel.transform(code, {
+		// sourceType: 'unambiguous',
+		babelrc: false,
+		configFile: false,
+		filename: filename || undefined,
+		compact: compress,
+		minified: compress,
+		comments: false,
+		retainLines: true,
+		presets: [
+			//'typescript',
+			['env', {
+				targets: {
+					node: 1
+					// ie: 11
+				},
+				modules: false,
+				bugfixes: true,
+				loose: true,
+				useBuiltIns: false,
+				ignoreBrowserslistConfig: true,
+				exclude: [
+					'transform-regenerator',
+					'transform-async-to-generator',
+					'proposal-async-generator-functions',
+					'transform-arrow-functions',
+					'transform-block-scoping',
+					'transform-function-name',
+					'transform-for-of',
+				]
+			}]
+		],
+		plugins: [
+			transformAsyncToPromises
+		]
+	}).code;
+}
+
 export default async function compile({ board, files = 'index.js', out = 'index.js', compress = false }) {
 	const env = await board.info();
 
@@ -41,8 +80,7 @@ export default async function compile({ board, files = 'index.js', out = 'index.
 				},
 				async load(id) {
 					// if (!/https?:\/\//.test(id)) return;
-					if (!id.startsWith('\0espruino:'))
-						return;
+					if (!id.startsWith('\0espruino:')) return;
 					const res = await fetch(id.slice(10));
 					const specs = new Map();
 					let code = await res.text();
@@ -82,41 +120,7 @@ export default async function compile({ board, files = 'index.js', out = 'index.
 			{
 				name: 'downlevel-and-minify',
 				async renderChunk(code, chunk) {
-					code = babel.transform(code, {
-						// sourceType: 'unambiguous',
-						babelrc: false,
-						configFile: false,
-						filename: out,
-						compact: true,
-						minified: compress,
-						comments: false,
-						retainLines: true,
-						presets: [
-							'typescript',
-							['env', {
-								targets: {
-									node: 4
-								},
-								modules: false,
-								bugfixes: true,
-								loose: true,
-								useBuiltIns: false,
-								ignoreBrowserslistConfig: true,
-								exclude: [
-									'transform-regenerator',
-									'transform-async-to-generator',
-									'proposal-async-generator-functions',
-									'transform-arrow-functions',
-									'transform-block-scoping',
-									'transform-function-name',
-									'transform-for-of',
-								]
-							}]
-						],
-						plugins: [
-							transformAsyncToPromises
-						]
-					}).code;
+					code = transpile(code, out, compress);
 
 					if (compress) {
 						code = (await minify(code, {
