@@ -61,7 +61,7 @@ export function transpile(code, filename, compress) {
 	}).code;
 }
 
-export default async function compile({ board, files = 'index.js', out = 'index.js', compress = false }) {
+export async function compile({ board, files = ['index.js'], out = 'index.js', compress = false }) {
 	const env = await board.info();
 
 	const build = await rollup({

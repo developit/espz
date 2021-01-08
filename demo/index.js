@@ -153,7 +153,7 @@ function connect(callback) {
 	function check() {
 		const addr = wifi.getIP();
 		if (addr && addr.ip !== '0.0.0.0') {
-			//wifi.save();
+			wifi.save();
 			return callback(null, SSID, addr);
 		}
 		if (Date.now() > start + 5000) {

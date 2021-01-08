@@ -86,6 +86,7 @@ declare module 'Wifi' {
 	function getStatus(): any;
 	function getDetails(): any;
 	function getIP(): any;
+	function save(): any;
 }
 
 declare module 'http' {

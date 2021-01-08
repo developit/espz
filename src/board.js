@@ -23,6 +23,7 @@ export default class Board {
 		return await this.info();
 	}
 
+	/** @returns {Promise<{ [key: string]: string, MODULES: string }>} */
 	async info() {
 		return await this._execCached(`process.env`);
 	}
