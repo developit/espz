@@ -69,13 +69,32 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 		input: files,
 		plugins: [
 			{
+				name: 'storage',
+				async resolveId(id, importer) {
+					const matches = id.match(/^(file|url|storage):(.+)$/);
+					if (!matches) return;
+					const [, prefix, spec] = matches;
+					const resolved = await this.resolve(spec, importer);
+					if (resolved) return `\0storage:${resolved.id}`;
+				},
+				async load(id) {
+					if (!id.startsWith('\0storage:')) return;
+					id = id.slice('\0storage:'.length);
+					this.addWatchFile(id);
+					const fileId = this.emitFile({
+						type: 'asset',
+						fileName: path.basename(id),
+						source: await fs.readFile(id, 'utf-8')
+					});
+					return `export default import.meta.ROLLUP_PLUGIN_FILE_URL_${fileId}`;
+				}
+			},
+			{
 				name: 'espruino-modules',
 				async resolveId(source) {
-					if (!/^[a-zA-Z0-9_-]+$/.test(source))
-						return;
+					if (!/^[a-zA-Z0-9_-]+$/.test(source)) return;
 					const url = (await getModulesList()).get(source);
-					if (url)
-						return `\0espruino:${url}`;
+					if (url) return `\0espruino:${url}`;
 					// if (url) return url;
 				},
 				async load(id) {
@@ -154,10 +173,16 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 
 	printStats(bundle);
 
+	// make TS happy
+	const assets = [];
+	for (const c of bundle.output) if (c.type==='asset') assets.push(c);
+
 	const bundleCode = bundle.output[0].code;
 	const outFile = path.resolve('.', '.out', out);
 	await fs.mkdir(path.dirname(outFile), { recursive: true });
 	await fs.writeFile(outFile, bundleCode);
+
+	return { bundle, assets, file: outFile, code: bundleCode };
 }
 
 function printStats(bundle) {

@@ -1,5 +1,13 @@
+// import { promises as fs, constants, openSync, closeSync } from 'fs';
+// import { connect, createConnection, Socket } from 'net';
+// import { ReadStream, WriteStream } from 'tty';
+// import { connect, Socket } from 'net';
 import { connect } from 'net';
 import { Readable } from 'stream';
+// import SerialPort from 'serialport';
+import SerialPort from '@serialport/stream';
+import Binding from '@serialport/bindings';
+SerialPort.Binding = Binding;
 
 export default class Board {
 	cmdCache = new Map();
@@ -34,21 +42,61 @@ export default class Board {
 
 	_connect() {
 		return this.pendingConnection = new Promise((resolve, reject) => {
-			const parsed = new URL(`http://${this.address}`);
-			const host = parsed.hostname;
-			const port = parseInt(parsed.port, 10) || 23;
-			// console.log({ address, host, port });
-			const c = connect({ host, port }, () => {
-				if (this.connection)
-					this.connection.end();
+			let parsed, host, port, conn;
 
+			const connected = () => {
+				if (this.connection) this.connection.end();
 				this.cmdCache.clear();
 				this.pendingConnection = null;
-				this.connection = c;
-				c.on('data', this._handleData.bind(this));
-				resolve(c);
-			});
-			c.on('error', err => {
+				this.connection = conn;
+				conn.on('data', this._handleData.bind(this));
+				resolve(conn);
+			};
+
+			try {
+				if (this.address[0] === '/') {
+					// console.log(this.address);
+					// const desc = await fs.open(this.address, constants.O_RDONLY | constants.O_NONBLOCK);
+					// console.log(this.address, desc);
+					// const fd = openSync(this.address, constants.O_NOCTTY | constants.O_NONBLOCK | constants.O_DIRECT);
+					// conn = {
+					// 	// fd,
+					// 	host: 'tcp://' + this.address,
+					// 	port: 23
+					// 	// fd: desc.fd,
+					// 	// path: this.address,
+					// 	// readable: true,
+					// 	// writable: true
+					// };
+
+					// let fd = openSync(this.address, constants.O_RDONLY | constants.O_NONBLOCK);
+					// const cleanup = () => {
+					// 	if (fd == null) return;
+					// 	console.log('releasing fd ' + fd);
+					// 	try { closeSync(fd); } catch (e) { console.error(e); }
+					// 	fd = null;
+					// };
+					// process.on('beforeExit', cleanup);
+					// process.on('exit', cleanup);
+					// conn = new ReadStream(fd, { writable: true, readable: true, allowHalfOpen: true });
+					// conn.resume();
+					// conn = new Socket({ fd, allowHalfOpen: true, readable: true, writable: true });
+
+					// conn.setEncoding('utf8');
+					// setTimeout(() => conn.resume());
+
+					conn = new SerialPort(this.address, { baudRate: 115200 }, connected);
+				} else {
+					parsed = new URL(`http://${this.address}`);
+					host = parsed.hostname;
+					port = parseInt(parsed.port, 10) || 23;
+					conn = connect({ host, port }, connected);
+				}
+			} catch (e) {
+				console.error(e);
+			}
+			conn.on('error', err => {
+				console.log('error', err);
 				// @ts-ignore-next
 				if (err.code === 'ENOTFOUND') {
 					return reject(Error(`Failed to connect to address ${host}:${port}`));
@@ -85,8 +133,9 @@ export default class Board {
 
 	_exec(/**@type {string}*/ expression) {
 		return new Promise((resolve, reject) => {
-			if (this.cmdQueue.push({ expression, resolve, reject }) === 1)
+			if (this.cmdQueue.push({ expression, resolve, reject }) === 1) {
 				this._processQueue();
+			}
 		});
 	}
 
@@ -102,8 +151,7 @@ export default class Board {
 	}
 
 	async _processQueue() {
-		if (!this.cmdQueue.length)
-			return;
+		if (!this.cmdQueue.length) return;
 
 		let c;
 		try {
@@ -115,21 +163,12 @@ export default class Board {
 
 		// sent Ctrl+C to reset the prompt
 		try {
-			await this._write(`\x03`);
+			await this._write(`\x03\n`);
 		} catch (e) { }
 
 		const cmd = this.cmdQueue.shift();
 		const id = ++this.cmdId;
-		try {
-			//console.log(`WRITE: try{print('$R$${id}',JSON.stringify(\n${cmd.expression}\n));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}`);
-			await this._write(`Promise.resolve().then(()=>eval(${JSON.stringify(cmd.expression)})).then(r=>print('$R$${id}',JSON.stringify(r))).catch(e=>print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack})));\n`);
-			// await this._write(`try{let $_=eval(${JSON.stringify(cmd.expression)});Promise.resolve().then(()=>$_).then(r=>print('$R$${id}',JSON.stringify(r)));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
-			// await this._write(`try{print('$R$${id}',JSON.stringify(eval(${JSON.stringify(cmd.expression)})));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
-		} catch (e) {
-			console.error(`Failed to execute command ${cmd.expression}: ${e}`);
-			cmd.reject(e);
-			return this._processQueue();
-		}
+
 		let buffer = '';
 		const reg = new RegExp('(?:\\r\\n|^)\\$(R|E)\\$' + id + ' (.*?)\\r\\n');
 		const handler = data => {
@@ -146,8 +185,21 @@ export default class Board {
 				cmd.resolve(value);
 			}
 			c.off('data', handler);
-			this._processQueue();
+			setTimeout(() => this._processQueue(), 10);
 		};
 		c.on('data', handler);
+
+		// TODO: leading "\x10" turns off echo for each line.
+		try {
+			//console.log(`WRITE: try{print('$R$${id}',JSON.stringify(\n${cmd.expression}\n));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}`);
+			await this._write(`Promise.resolve().then(()=>eval(${JSON.stringify(cmd.expression)})).then(r=>print('$R$${id}',JSON.stringify(r))).catch(e=>print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack})));\n`);
+			// await this._write(`try{let $_=eval(${JSON.stringify(cmd.expression)});Promise.resolve().then(()=>$_).then(r=>print('$R$${id}',JSON.stringify(r)));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
+			// await this._write(`try{print('$R$${id}',JSON.stringify(eval(${JSON.stringify(cmd.expression)})));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
+		} catch (e) {
+			c.off('data', handler);
+			console.error(`Failed to execute command ${cmd.expression}: ${e}`);
+			cmd.reject(e);
+			return setTimeout(() => this._processQueue(), 10);
+		}
 	}
 }

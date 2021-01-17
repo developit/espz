@@ -21,6 +21,8 @@
   "license": "ISC",
   "devDependencies": {
     "@babel/standalone": "^7.12.12",
+    "@serialport/bindings": "^9.0.4",
+    "@serialport/stream": "^9.0.2",
     "@types/espruino": "^1.94.3",
     "@types/node": "^14.14.19",
     "babel-plugin-transform-async-to-promises": "^0.8.15",

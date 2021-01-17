@@ -8,6 +8,13 @@
 /// <reference lib="ES2017.TypedArrays" />
 /// <reference types="@types/espruino" />
 
+
+/** Types used by ESPZ */
+declare module 'storage:*' {
+	const storageFileName: string;
+	export = storageFileName;
+}
+
 // Poison unsupported standard library methods to indicate they are not available in Espruino's runtime:
 declare interface Array<T> {
 	/** @deprecated Unsupported in Espruino */

@@ -2,6 +2,7 @@ import esp from 'ESP8266';
 import wifi from 'Wifi';
 import http from 'http';
 import Storage from 'Storage';
+import htmlPage from 'storage:./index.html';
 
 const HOSTNAME = 'wemod1mini';
 const SSID = 'developit';
@@ -10,10 +11,16 @@ const PASSWORD = 'blowgun76?reappointed';
 // Disable logging (frees 1.2kb of heap)
 esp.setLog(0);
 
+let LED = 1;
+setInterval(() => {
+	digitalWrite(D2, LED ^= 1);
+}, 1000);
+
 const ROUTES = {
 	'GET /': function(req, res) {
 		//const f = E.openFile('index.html', 'r');
-		const f = Storage.read('ui.html');
+		// const f = Storage.read('ui.html');
+		const f = Storage.read(htmlPage);
 		res.writeHead(200, { 'content-type': 'text/html' });
 		res.end(f);
 		//f.pipe(res);

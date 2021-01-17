@@ -14,6 +14,36 @@ export async function repl({ board }) {
 	});
 	rl.setPrompt(kleur.magenta('>') + ' ');
 	rl.prompt();
+	let info;
+	async function updateStats() {
+		info = await board._exec('('+function(process, wifi, esp, Storage){
+			return {
+				memory: process.memory(),
+				state: esp.getState(),
+				flash: esp.getFreeFlash(),
+				reset: esp.getResetInfo(),
+				wifi: wifi.getDetails(),
+				wifiStatus: wifi.getStatus(),
+				hostname: wifi.getHostname(),
+				storage: Storage.getFree()
+			};
+		}+')(process, require("Wifi"), require("ESP8266"), require("Storage"))');
+		const memPercent = (info.memory.usage / info.memory.total) * 100 | 0;
+		const memColor = memPercent>80 ? 'red' : memPercent>50 ? 'yellow' : 'green';
+		const mem = `${kleur[memColor](info.memory.usage)}${kleur.dim('/'+info.memory.total)}b`;
+		const cpu = info.state.cpuFrequency;
+		const wifi = '◢' + (150 + 5/3*info.wifi.rssi|0) + kleur.dim('%');  // 2 * info.wifi.rssi + 200
+		// `SDK:${info.state.sdkVersion.replace(/\(.+\)/,'')}`
+		const stats = `${cpu}${kleur.dim('mHz')} ${mem} ${kleur.blue(wifi)} | ${kleur.dim('💾')}${info.storage/1000|0}k${kleur.dim('/'+(info.state.flashKB/1000|0)+'M')} ${kleur.dim('heap:')}${info.state.freeHeap} ${kleur.dim('conn:')}${info.state.maxCon}`;
+		process.stdout.write(`\u001B[s\u001B[${process.stdout.rows+1};1H⌬ ${stats}\u001B[u`);
+		// rl.setPrompt(`\u001B[E${cpu}${stats}\u001B[F${kleur.magenta('>')} `);
+		// rl.setPrompt(`${kleur.magenta('>')} \u001B[E${stats}\u001B[F`);
+		// const [w, h] = process.stdout.getWindowSize();
+		// const loc = h * 
+		// rl.prompt(true);
+		setTimeout(updateStats, 2000);
+	}
+	setTimeout(updateStats, 1000);
 	rl.on('line', async line => {
 		count = 0;
 		rl.pause();
