@@ -36,6 +36,10 @@ export default class Board {
 		return await this._execCached(`process.env`);
 	}
 
+	async sendCode(code) {
+		
+	}
+
 	_ensureConnection() {
 		return this.connection || this.pendingConnection || this._connect();
 	}
@@ -110,10 +114,10 @@ export default class Board {
 		this.outputBuffer += data.toString('ascii');
 		// don't commit until the device returns a prompt:
 		if (this.outputBuffer[this.outputBuffer.length-1] !== '>') return;
-		this.outputBuffer = this.outputBuffer
-			.replace(/(^|\n)(?:>.*?\r\n(?:\:.*?\r\n)*|Execution Interrupted during event processing\.\r\n)/g, '$1')
+		// this.outputBuffer = this.outputBuffer.replace(/(^|\n)(?:>.*?\r\n(?:\:.*?\r\n)*|Execution Interrupted during event processing\.\r\n)/g, '$1')
+		this.outputBuffer = this.outputBuffer.replace(/(^|\n)>.*?\r\n(?:\:.*?\r\n)*/g, '$1')
 		const lines = /.*?\r\n/g;
-		const isRepl = /^(?:=|\$[RE]\$\d+ )/;
+		const isRepl = /^(?:=|(?:\x1b\[J)?\$[RE]\$\d+ )/;
 		let line;
 		let index = 0;
 		while (line = lines.exec(this.outputBuffer)) {
@@ -150,6 +154,17 @@ export default class Board {
 		});
 	}
 
+	// Attempst to send Ctrl+C to reset the prompt
+	async resetPrompt() {
+		try {
+			await this._write(`\x03`);
+		} catch (e) { }
+	}
+
+	async _recover() {
+		return this._write('\x03\x03echo(1)\n');
+	}
+
 	async _processQueue() {
 		if (!this.cmdQueue.length) return;
 
@@ -161,18 +176,16 @@ export default class Board {
 			return setTimeout(this._processQueue.bind(this), 5000);
 		}
 
-		// sent Ctrl+C to reset the prompt
-		try {
-			await this._write(`\x03\n`);
-		} catch (e) { }
+		// await this.resetPrompt();
 
 		const cmd = this.cmdQueue.shift();
 		const id = ++this.cmdId;
 
 		let buffer = '';
-		const reg = new RegExp('(?:\\r\\n|^)\\$(R|E)\\$' + id + ' (.*?)\\r\\n');
+		const reg = new RegExp('(?:\\r\\n|\\r\\x1b\\[J|^)\\$(R|E)\\$' + id + ' (.*?)\\r\\n');
 		const handler = data => {
 			buffer += data.toString('ascii');
+			// console.log('DATA: ', JSON.stringify(buffer));
 			reg.lastIndex = 0;
 			const result = reg.exec(buffer);
 			if (!result) return;
@@ -189,10 +202,14 @@ export default class Board {
 		};
 		c.on('data', handler);
 
-		// TODO: leading "\x10" turns off echo for each line.
+		// const handleData = data => console.log('OUTPUT: ', data);
+		// this.output.on('data', handleData);
+
+		// Notes:
+		// - leading "\x10" turns off line echo
+		// - initial print() avoids returned output including a prompt and line clear escape code (">\x1b[J")
 		try {
-			//console.log(`WRITE: try{print('$R$${id}',JSON.stringify(\n${cmd.expression}\n));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}`);
-			await this._write(`Promise.resolve().then(()=>eval(${JSON.stringify(cmd.expression)})).then(r=>print('$R$${id}',JSON.stringify(r))).catch(e=>print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack})));\n`);
+			await this._write(`\x10Promise.resolve().then(()=>eval(${JSON.stringify(cmd.expression)})).then(r=>print('$R$${id}',JSON.stringify(r))).catch(e=>print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack})));\n`);
 			// await this._write(`try{let $_=eval(${JSON.stringify(cmd.expression)});Promise.resolve().then(()=>$_).then(r=>print('$R$${id}',JSON.stringify(r)));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
 			// await this._write(`try{print('$R$${id}',JSON.stringify(eval(${JSON.stringify(cmd.expression)})));}catch(e){print('$E$${id}',JSON.stringify({message:e.message,stack:e.stack}));}\n`);
 		} catch (e) {

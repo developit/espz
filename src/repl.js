@@ -28,6 +28,12 @@ export async function repl({ board }) {
 				storage: Storage.getFree()
 			};
 		}+')(process, require("Wifi"), require("ESP8266"), require("Storage"))');
+		drawStats();
+		setTimeout(updateStats, 2000);
+	}
+	// setTimeout(updateStats, 1000);
+	function drawStats() {
+		return;
 		const memPercent = (info.memory.usage / info.memory.total) * 100 | 0;
 		const memColor = memPercent>80 ? 'red' : memPercent>50 ? 'yellow' : 'green';
 		const mem = `${kleur[memColor](info.memory.usage)}${kleur.dim('/'+info.memory.total)}b`;
@@ -38,12 +44,8 @@ export async function repl({ board }) {
 		process.stdout.write(`\u001B[s\u001B[${process.stdout.rows+1};1H⌬ ${stats}\u001B[u`);
 		// rl.setPrompt(`\u001B[E${cpu}${stats}\u001B[F${kleur.magenta('>')} `);
 		// rl.setPrompt(`${kleur.magenta('>')} \u001B[E${stats}\u001B[F`);
-		// const [w, h] = process.stdout.getWindowSize();
-		// const loc = h * 
 		// rl.prompt(true);
-		setTimeout(updateStats, 2000);
 	}
-	setTimeout(updateStats, 1000);
 	rl.on('line', async line => {
 		count = 0;
 		rl.pause();
@@ -55,6 +57,7 @@ export async function repl({ board }) {
 			process.stdout.write(kleur.red('ⓧ  ' + e.message.split('\n')[0].replace(/^unknown: /,'')) + '\n');
 			rl.resume();
 			rl.prompt(true);
+			drawStats();
 			return;
 		}
 		try {
@@ -73,6 +76,7 @@ export async function repl({ board }) {
 		}
 		rl.resume();
 		rl.prompt(false);
+		drawStats();
 	});
 	let count = 0;
 	let pos;
@@ -81,9 +85,10 @@ export async function repl({ board }) {
 	});
 	async function reset() {
 		rl.pause();
-		await board._write(`\x03`);
+		await board.resetPrompt();
 		rl.resume();
 		rl.prompt(false);
+		drawStats();
 	}
 	board.output.on('data', data => {
 		process.stdout.write(kleur.white(data));
