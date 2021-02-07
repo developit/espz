@@ -2,7 +2,7 @@
 <title>home-app</title>
 <link rel="icon" href="data:">
 <script type="module">
-	import { h, html, useReducer, useMemo, useCallback, render } from 'https://unpkg.com/htm/preact/standalone.mjs';
+	import { h, html, useReducer, useMemo, useEffect, useCallback, render } from 'https://unpkg.com/htm/preact/standalone.mjs';
 
 	const api = async (u, o) => await (await fetch('/api' + u, o)).json();
 
@@ -24,10 +24,10 @@
 
 	function machine(state, { type, data, event, action }) {
 		switch (type) {
-			case 'set': return { ...state, [data]: event };
-			case 'init':
-				action.with('all:update')();
+			case '@@init':
+				setTimeout(action.with('all:update'));
 				return { info: {}, receiver: {} }
+			case 'set': return { ...state, [data]: event };
 			case 'all:update':
 				action.with('info:update')();
 				action.with('receiver:update')();
@@ -52,7 +52,7 @@
 	function App() {
 		const [{ info, receiver }, action] = useMachine(machine);
 		useEffect(() => {
-			setInterval(action.with('info:update'), 1000);
+			setInterval(action.with('info:update'), 5000);
 		}, []);
 		const recv = receiver?.Main_Zone?.Basic_Status;
 		const mem = info?.memory;
@@ -71,8 +71,8 @@
 				</div>
 				<div>
 					CPU: ${info?.device?.state?.cpuFrequency}mHz<br />
-					Memory: <meter value=${memPercent}>${memPercent}%</meter> \${mem?.usage}b / ${mem?.total}b<br />
-					WiFi: connected to ${info?.wifi?.details?.ssid} as ${info?.wifi?.hostname} (${2 * (info?.wifi?.details?.rssi + 100)}%)
+					Memory: <meter value=${memPercent} max=100>${memPercent}%</meter> ${mem?.usage}b<small>/${mem?.total}b</small><br />
+					WiFi: ${info?.wifi?.details?.ssid} (◢ ${150 + 5 / 3 * info?.wifi?.details?.rssi | 0}%) <em>as</em> ${info?.wifi?.hostname}
 				</div>
 			</div>
 			<main class="cols">
@@ -85,7 +85,7 @@
 				<pre>${JSON.stringify(receiver, null, 2)}</pre>
 				</section>
 			</main>
-			`;
+		`;
 	}
 	render(h(App), document.body);
 </script>

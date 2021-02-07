@@ -2,9 +2,11 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import kleur from 'kleur';
 import { rollup } from 'rollup';
+import jsonPlugin from '@rollup/plugin-json';
 import { minify } from 'terser';
 import babel from '@babel/standalone';
 import transformAsyncToPromises from 'babel-plugin-transform-async-to-promises';
+import asyncHelpers from 'babel-plugin-transform-async-to-promises/helpers-string.js';
 import { fetch } from "./util.js";
 
 const MODULES_URL = 'http://www.espruino.com/modules/';
@@ -31,7 +33,7 @@ export function transpile(code, filename, compress) {
 		compact: compress,
 		minified: compress,
 		comments: false,
-		retainLines: true,
+		// retainLines: true,
 		presets: [
 			//'typescript',
 			['env', {
@@ -48,14 +50,15 @@ export function transpile(code, filename, compress) {
 					'transform-regenerator',
 					'transform-async-to-generator',
 					'proposal-async-generator-functions',
-					'transform-arrow-functions',
-					'transform-block-scoping',
+					// 'transform-arrow-functions',
+					// 'transform-block-scoping',
 					'transform-function-name',
 					'transform-for-of',
 				]
 			}]
 		],
 		plugins: [
+			// [transformAsyncToPromises, { inlineHelpers: true }]
 			transformAsyncToPromises
 		]
 	}).code;
@@ -69,7 +72,24 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 		input: files,
 		plugins: [
 			{
+				name: 'entry-notreeshake',
+				async resolveId(id, importer) {
+					// if (!importer) return { moduleSideEffects: true, meta: { treeshake: false } };
+					if (!importer) {
+						const resolved = await this.resolve(id, importer, { skipSelf: true });
+						return resolved && { ...resolved, moduleSideEffects: 'no-treeshake' };
+					}
+				},
+				// load(id) {
+				// 	if (this.getModuleInfo(id).isEntry) return { }
+				// }
+			},
+			jsonPlugin({ compact: true }),
+			{
 				name: 'storage',
+				resolveFileUrl({ fileName }) {
+					return JSON.stringify(fileName);
+				},
 				async resolveId(id, importer) {
 					const matches = id.match(/^(file|url|storage):(.+)$/);
 					if (!matches) return;
@@ -86,7 +106,7 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 						fileName: path.basename(id),
 						source: await fs.readFile(id, 'utf-8')
 					});
-					return `export default import.meta.ROLLUP_PLUGIN_FILE_URL_${fileId}`;
+					return `export default import.meta.ROLLUP_FILE_URL_${fileId}`;
 				}
 			},
 			{
@@ -100,6 +120,7 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 				async load(id) {
 					// if (!/https?:\/\//.test(id)) return;
 					if (!id.startsWith('\0espruino:')) return;
+					console.log('fetching module ' + id.slice(10));
 					const res = await fetch(id.slice(10));
 					const specs = new Map();
 					let code = await res.text();
@@ -115,7 +136,18 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 					});
 					return `var exports={};export default exports;${before}\n${code}`;
 				}
-			}
+			},
+			// {
+			// 	name: 'node_modules',
+			// 	async resolveId(id, importer) {
+			// 		if (!importer || /^(?:\.*\/|\w+:|\0)/.test(id)) return null;
+			// 		console.log(id);
+			// 		if (id === 'babel-plugin-transform-async-to-promises/helpers') {
+			// 			return asyncHelpers.code;
+			// 		}
+			// 		return `./node_modules/${id}`;
+			// 	}
+			// }
 		]
 	});
 
@@ -143,27 +175,38 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 
 					if (compress) {
 						code = (await minify(code, {
-							toplevel: false,
+							// toplevel: false,
 							ecma: 2015,
 							compress: {
+								top_retain: ['onInit', 'onKill', 'E', 'global'],
 								ecma: 5,
 								passes: 10,
-								arrows: true,
+								// inline: 3,
+								// arrows: true,
+								sequences: false,
 								unsafe: true,
 								hoist_props: true,
-								pure_getters: true
+								pure_getters: true,
+								hoist_funs: true,
+								hoist_vars: true,
+								reduce_vars: false
 							},
-							mangle: true,
+							mangle: {
+								toplevel: false
+							},
 							safari10: true,
 							format: {
-								ascii_only: true,
 								ecma: 5,
+								ascii_only: true,
+								semicolons: true,
 								shorthand: false,
 								comments: false,
 								preserve_annotations: false
 							}
 						})).code;
 					}
+
+					code = `(function(){${code}})()`;
 
 					return { code };
 				}
@@ -189,8 +232,7 @@ function printStats(bundle) {
 	const chunks = [];
 	let nameLen = 0;
 	for (const c of bundle.output) {
-		if (c.type !== 'chunk')
-			continue;
+		if (c.type !== 'chunk') continue;
 		nameLen = Math.max(nameLen, c.fileName.length);
 		chunks.push(c);
 	}

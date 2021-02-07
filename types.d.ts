@@ -57,6 +57,8 @@ declare namespace process {
 	function memory(): { free: number, usage: number, total: number, history: number, gc: number, gctime: number, blocksize: number };
 	type env = Record<string, string>;
 	type version = string;
+	function on(type: 'uncaughtException', handler: (e: Error) => void): void;
+	function on(type: 'exit', handler: () => void): void;
 }
 
 declare namespace E {
@@ -68,6 +70,7 @@ declare namespace E {
 	function lookupNoCase(o: object, key: string): any;
 	// function lookupNoCase<T = object, K = string>(o: T, key: K): Lower<T>[Lowercase<K>];
 	// type Lower<T> = { [X in keyof T as Lowercase<X>]: T[X] };
+	function setConsole(interfaceName: string, { force: boolean }?): void;
 }
 
 // Built-in Modules
@@ -84,7 +87,8 @@ declare namespace ESP8266 {
 declare module 'Storage' {
 	function list(): string[];
 	function getFree(): number;
-	function read(file: string, mode?: 'r'|'w'|'a'): File | undefined;
+	function open(file: string, mode?: 'r'|'w'|'a'): File | undefined;
+	function read(file: string, offset?: number, length?: number): string | undefined;
 }
 
 declare module 'Wifi' {

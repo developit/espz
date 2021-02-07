@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Desky</title>
+<header>&#x25E2; <span id="w">...</span></header>
+<section>
+	<label>Height: <input readonly id="height" size="3"></label>
+	<button onclick="up()">UP</button>
+	<button onclick="down()">DOWN</button>
+</section>
+<section>Preset:
+	<button onclick="mem(1)">1</button>
+	<button onclick="mem(2)">2</button>
+	<button onclick="mem(3)">3</button>
+	<button onclick="mem(4)">4</button>
+</section>
+<section>
+	<input id=slider type=range min=75 max=123 onchange="goToHeight(slider.value)">
+</section>
+<script>
+	const api = async (u, o) => await (await fetch('/api' + u, o)).json();
+	function up() {
+		api('/up', { method: 'POST' });
+	}
+	function down() {
+		api('/down', { method: 'POST' });
+	}
+	function mem(button) {
+		api('/mem', { method: 'POST', body: JSON.stringify({ button }) });
+	}
+	async function goToHeight(height) {
+		slider.disabled = true;
+		resetPoll(500);
+		const res = await api('/height', { method: 'POST', body: JSON.stringify({ height }) });
+		if (res.height) showHeight(res.height);
+		else console.warn(res);
+		resetPoll(2000);
+		slider.disabled = false;
+	}
+	let pollRate = 2000;
+	let wTime = 0;
+	let poller;
+	function showHeight(height) {
+		self.height.value = height;
+		if (!self.slider.matches(':active')) self.slider.value = height;
+	}
+	function resetPoll(rate) {
+		clearTimeout(poller);
+		pollRate = rate;
+		poller = setTimeout(updateHeight, pollRate);
+	}
+	async function updateHeight() {
+		try {
+			if (Date.now() - wTime > 10e3) {
+				let { signal, status, ssid, height } = await api('/info');
+				self.w.textContent = signal + '% (' + ssid + (status == 'connected' ? '' : '...') + ')';
+				showHeight(height);
+				wTime = Date.now();
+			} else {
+				let { height } = await api('/height');
+				showHeight(height);
+			}
+		} catch (e) { }
+		clearTimeout(poller);
+		poller = setTimeout(updateHeight, pollRate);
+	}
+	updateHeight();
+</script>
+<style>
+	html,
+	body {
+		background: #303438;
+		font-family: system-ui;
+		text-align: center;
+		color: white;
+	}
+
+	header {
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		padding: 10px;
+		background: #000;
+		color: #ccc;
+	}
+
+	section {
+		padding: 10px 0;
+	}
+
+	[type=range] {
+		zoom: 2;
+		width: 140px;
+		filter: hue-rotate(43deg);
+	}
+
+	#height {
+		background: rgba(0, 0, 0, 0.3);
+		color: #d5c8f3;
+		padding: 5px;
+		margin-right: 10px;
+		border: rgba(0, 0, 0, 0.5);
+		border-radius: 5px;
+		text-align: center;
+		font: inherit;
+		vertical-align: middle;
+	}
+
+	button {
+		padding: 10px 20px;
+		margin: 2px;
+		background: linear-gradient(to bottom, #947acc, #5127a7);
+		border: none;
+		border-radius: 11px;
+		color: white;
+		box-shadow: 0 1px 2px rgb(0 0 0 / 50%);
+		text-shadow: 0 -1px #000;
+		font: inherit;
+		font-weight: bold;
+		outline: none;
+		vertical-align: middle;
+	}
+
+	button[onclick^=mem] {
+		font-size: 26px;
+		padding: 5px 16px;
+	}
+</style>

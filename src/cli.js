@@ -40,17 +40,89 @@ const commands = {
 			process.stdout.write(kleur.white(data));
 		}
 		board.output.on('data', onData);
+		const wait = t => new Promise(r => setTimeout(r, t));
 		try {
-			await board._exec('reset()');
+			await board._exec('42');
+		} catch (e) {
+			try {
+				await board.resetPrompt();
+			} catch (e) {
+				console.log('failed to reset prompt: ', e);
+			}
+		}
+		if (ctx.reset) {
+			const hard = ctx.reset === 'hard' || ctx.reset === 'full';
+			console.log(`Sending${hard?' hard':''} reset...`);
+			try {
+				await board._exec(hard ? 'reset(true)' : 'reset()');
+				await wait(hard ? 2000 : 1000);
+			} catch (e) {}
+		}
+		await board._exec('42');
+		try {
+			// await board._exec('reset()');
 			for (const asset of assets) {
 				const str = typeof asset.source === 'string' ? asset.source : Buffer.from(asset.source).toString('utf-8');
 				console.log(`Writing ${asset.fileName} (${Buffer.byteLength(str)}b) ...`);
-				await board._exec(`require('Storage').write(${JSON.stringify(asset.fileName)},${JSON.stringify(str)});`);
+				await board._exec(`require('Storage').write(${JSON.stringify(asset.fileName)},${JSON.stringify(str)})`);
+				process.stdout.write('\b ✅\n');
+				await wait(1000);
+				await board._exec('42');
 			}
+			if (ctx.reset) {
+				try {
+					await board._exec('reset()');
+					await wait(1000);
+					await board._exec('42');
+				} catch (e) {}
+			}
+	
+			console.log(`Sending compiled code (${Buffer.byteLength(code)}b)...`);
+			if (ctx.boot) {
+				console.log(await board._exec(`(global.BOOTCODE=${JSON.stringify(code)}, "done")`));
+				console.log(`Writing code to ".bootcde" file...`);
+				try {
+					console.log(await board._exec(`setTimeout(function(){ E.setBootCode(global.BOOTCODE); delete global.BOOTCODE; print('rebooting'); E.reboot(); }, 1000) && "done"`));
+					console.log('Setting bootcode (may take a few seconds)');
+					await wait(10000);
 
-			console.log(`Sending compiled code (${Buffer.byteLength(code)}b) ...`);
-			const out = await board._exec(code);
-			console.log(out);
+					if (ctx.tail) {
+						ctx.board = new Board(ctx);
+						const info = ctx.boardInfo = await ctx.board.init();
+						console.log(`Reconnected to ${info.BOARD}`);
+					}
+				} catch (e) {
+					console.error('Error setting bootcode: ', e);
+				}
+				// } finally {
+				// 	try {
+				// 		console.log(await board._exec(`delete global.BOOTCODE`));
+				// 	} catch (e) {
+				// 		console.error(`Error cleaning BOOTCODE global: ${e}`);
+				// 	}
+				// }
+				// console.log(`Rebooting device...`);
+				// console.log(await board._exec(`E.reboot()`));
+			} else {
+				// console.log(await board._exec(code + (ctx.save ? '\n\nsave();' : '')));
+				// console.log(await board._exec('\x10' + code));
+				// console.log(await board._exec(code));
+				console.log(await board._write('\x10' + code));
+				console.log('transmitted, waiting 5s...');
+				await wait(5000);
+				console.log('Code sent, checking...');
+				console.log(await board._exec('process.memory()'));
+				console.log('Executed.');
+				// await board._exec(`if (typeof onInit === 'function') onInit(); E.emit('init')`);
+				await wait(500);
+				if (ctx.save) {
+					console.log('Saving...');
+					console.log(await board._exec('save()'));
+					await wait(2000);
+					console.log('Save complete');
+					console.log(await board._exec('process.memory()'));
+				}
+			}
 		} catch (e) {
 			process.stderr.write(kleur.red('Error:') + ' ' + e);
 		} finally {
@@ -58,6 +130,10 @@ const commands = {
 		}
 		// ctx.board._exec(`require('Storage').write('.bootcde',${JSON.stringify(code)});`);
 		console.log(`Done!`);
+
+		if (ctx.tail) {
+			return commands.repl(ctx);
+		}
 	}
 };
 
@@ -67,6 +143,7 @@ const prog = sade('espz')
 const run = cmd => async (str, opts) => {
 	if (!opts) [opts, str] = [str, opts];
 	opts._ = [].concat(str || [], opts._).filter(Boolean);
+	opts.reset = opts.reset !== 'false' && opts.reset || false;
 	try {
 		opts.board = new Board(opts);
 		const info = opts.boardInfo = await opts.board.init();
@@ -96,6 +173,10 @@ prog.command('build [...files]', 'Compile modern JS modules for espruino', {alia
 prog.command('send [...files]', 'Compile and send modules to espruino')
 	.option('files', 'One or more entry modules to be bundled together')
 	.option('compress', 'Minify the result using Terser', true)
+	.option('tail', 'Stay connected to the device in a REPL', false)
+	.option('reset', 'Reset before sending (default is soft, "hard" for full reset)')
+	.option('boot', 'Save code to be run at bootup, then reboot', false)
+	.option('save', 'Call save() after sending code', false)
 	.action(run(async opts => {
 		opts.files = opts._.length ? opts._ : ['index.js'];
 		return commands.send(opts);
