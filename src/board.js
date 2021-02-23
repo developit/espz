@@ -57,9 +57,28 @@ export default class Board {
 		return this._execCached('process.env', opts);
 	}
 
+	async gc() {
+		return this._exec(`global['\\xFF'].history=[];process.memory();undefined;`);
+	}
+
 	async sendCode(code) {
 		
 	}
+
+	/** @param {string} fileName @param {string} contents */
+	async writeFile(fileName, contents) {
+		const f = JSON.stringify(fileName);
+		const large = contents.length > 1000;
+		const after = large ? `,0,${contents.length}` : '';
+		const substr = contents.substring(0, 1000);
+		await this._exec(`require('Storage').write(${f},${JSON.stringify(substr)}${after})`);
+		// @TODO - make this loop synchronous and get sequenced buffered writes?
+		for (let i = 1000; i < contents.length; i += 1000) {
+			const substr = contents.substring(i, i + 1000);
+			await this._exec(`require('Storage').write(${f},${JSON.stringify(substr)},${i})`);
+		}
+	}
+
 
 	_ensureConnection() {
 		return this.connection || this.pendingConnection || this._connect();

@@ -58,32 +58,26 @@ const commands = {
 				await wait(hard ? 2000 : 1000);
 			} catch (e) {}
 		}
-		await board._exec('42');
+		await board.gc();
+
 		try {
-			// await board._exec('reset()');
 			for (const asset of assets) {
 				const str = typeof asset.source === 'string' ? asset.source : Buffer.from(asset.source).toString('utf-8');
 				console.log(`Writing ${asset.fileName} (${Buffer.byteLength(str)}b) ...`);
-				await board._exec(`require('Storage').write(${JSON.stringify(asset.fileName)},${JSON.stringify(str)})`);
+				await board.writeFile(asset.fileName, str);
 				process.stdout.write('\b ✅\n');
 				await wait(1000);
-				await board._exec('42');
+				await board.gc();
 			}
-			if (ctx.reset) {
-				try {
-					await board._exec('reset()');
-					await wait(1000);
-					await board._exec('42');
-				} catch (e) {}
-			}
-	
-			console.log(`Sending compiled code (${Buffer.byteLength(code)}b)...`);
+
+			const size = Buffer.byteLength(code);
 			if (ctx.boot) {
-				console.log(await board._exec(`(global.BOOTCODE=${JSON.stringify(code)}, "done")`));
-				console.log(`Writing code to ".bootcde" file...`);
+				console.log(`Writing compiled code to ".bootcde" file (${size}b)...`);
+				await board.writeFile('.bootcde', code);
+				await board.gc();
 				try {
-					console.log(await board._exec(`setTimeout(function(){ E.setBootCode(global.BOOTCODE); delete global.BOOTCODE; print('rebooting'); E.reboot(); }, 1000) && "done"`));
-					console.log('Setting bootcode (may take a few seconds)');
+					console.log('Code written. Rebooting... (may take a few seconds)');
+					console.log(await board._exec(`setTimeout(function(){ print('rebooting'); E.reboot(); }, 1000) && "done"`));
 					await wait(10000);
 
 					if (ctx.tail) {
@@ -94,16 +88,8 @@ const commands = {
 				} catch (e) {
 					console.error('Error setting bootcode: ', e);
 				}
-				// } finally {
-				// 	try {
-				// 		console.log(await board._exec(`delete global.BOOTCODE`));
-				// 	} catch (e) {
-				// 		console.error(`Error cleaning BOOTCODE global: ${e}`);
-				// 	}
-				// }
-				// console.log(`Rebooting device...`);
-				// console.log(await board._exec(`E.reboot()`));
 			} else {
+				console.log(`Sending compiled code (${Buffer.byteLength(code)}b)...`);
 				// console.log(await board._exec(code + (ctx.save ? '\n\nsave();' : '')));
 				// console.log(await board._exec('\x10' + code));
 				// console.log(await board._exec(code));
@@ -111,7 +97,7 @@ const commands = {
 				console.log('transmitted, waiting 5s...');
 				await wait(5000);
 				console.log('Code sent, checking...');
-				console.log(await board._exec('process.memory()'));
+				await board.gc();
 				console.log('Executed.');
 				// await board._exec(`if (typeof onInit === 'function') onInit(); E.emit('init')`);
 				await wait(500);
@@ -120,7 +106,7 @@ const commands = {
 					console.log(await board._exec('save()'));
 					await wait(2000);
 					console.log('Save complete');
-					console.log(await board._exec('process.memory()'));
+					await board.gc();
 				}
 			}
 		} catch (e) {
