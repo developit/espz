@@ -16,11 +16,11 @@ const BOARD_URL = 'http://www.espruino.com/json/%BOARD%.json';
 const commands = {
 	async write({ board, boardInfo, files }) {
 		for (const filename of files) {
-			const to = JSON.stringify(path.basename(filename));
+			const to = path.basename(filename);
 			const contents = await fs.readFile(filename, 'utf-8');
 			console.log(`Writing ${to} (${Buffer.byteLength(contents)}b) ...`)
-			await board._exec(`require('Storage').write(${to},${JSON.stringify(contents)});`);
-			console.log(`... written.`)
+			await board.writeFile(to, contents);
+			console.log(`... written.`);
 		}
 		console.log(`Finished writing ${files.length} files.`);
 	},
@@ -151,6 +151,7 @@ prog.command('build [...files]', 'Compile modern JS modules for espruino', {alia
 	.option('files', 'One or more entry modules to be bundled together')
 	.option('out', 'Filename to write bundled code to in device storage', 'index.js')
 	.option('compress', 'Minify the result using Terser', true)
+	.option('wrap', 'Wrap compiled code in an IIFE', false)
 	.action(run(async opts => {
 		opts.files = opts._.length ? opts._ : ['index.js'];
 		return commands.build(opts);
@@ -159,6 +160,7 @@ prog.command('build [...files]', 'Compile modern JS modules for espruino', {alia
 prog.command('send [...files]', 'Compile and send modules to espruino')
 	.option('files', 'One or more entry modules to be bundled together')
 	.option('compress', 'Minify the result using Terser', true)
+	.option('wrap', 'Wrap compiled code in an IIFE', false)
 	.option('tail', 'Stay connected to the device in a REPL', false)
 	.option('reset', 'Reset before sending (default is soft, "hard" for full reset)')
 	.option('boot', 'Save code to be run at bootup, then reboot', false)

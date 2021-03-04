@@ -12,6 +12,8 @@ export async function repl({ board }) {
 		input: process.stdin,
 		output: process.stdout
 	});
+	process.stdout.write(`\u001B[1A\u001B[50G, ${kleur.green('entering JS console')}.`);
+	process.stdout.write(`\u001B[1E   ${kleur.magenta(`${kleur.bold('Tip:')} type ${kleur.bold('exit')} and press enter to disconnect.`)}\n`);
 	rl.setPrompt(kleur.magenta('>') + ' ');
 	rl.prompt();
 	let info = {};
@@ -70,26 +72,41 @@ export async function repl({ board }) {
 			// @ts-ignore-next
 			return process.emit('SIGINT');
 		}
+
 		count = 0;
 		rl.pause();
+		let preserveCursor = false;
 		let code = line;
+
+		let timer = setTimeout(() => {
+			let error = '';
+			let timer = setTimeout(() => {
+				process.stdout.write(kleur.red('No reponse in 10 seconds, sending reset.' + error) + '\n');
+				board.resetPrompt();
+				done();
+			}, 5000);
+			board._exec('42').then(o => {
+				clearTimeout(timer);
+				done();
+			}).catch(e => error = ` (${e})`);
+		}, 5000);
+
+		function done() {
+			clearTimeout(timer);
+			rl.resume();
+			rl.prompt(preserveCursor);
+			drawStats();
+		}
+
 		try {
 			code = transpile(code, null, false);
 		} catch (e) {
 			process.stdout.write(kleur.red('─'.repeat(e.loc.column) + '⌃') + '\n');
 			process.stdout.write(kleur.red('ⓧ  ' + e.message.split('\n')[0].replace(/^unknown: /,'')) + '\n');
-			rl.resume();
-			rl.prompt(true);
-			drawStats();
-			return;
+			preserveCursor = true;
+			return done();
 		}
-		let timer = setTimeout(() => {
-			process.stdout.write(kleur.red('No reponse in 5 seconds, terminating.') + '\n');
-			board.resetPrompt();
-			rl.resume();
-			rl.prompt(false);
-			drawStats();
-		}, 5000);
+		
 		try {
 			process.stdout.write(kleur.dim('↤ ') + inspect(await board._exec(code), true, undefined, process.stdout.hasColors()) + '\n');
 		} catch (e) {
@@ -104,10 +121,7 @@ export async function repl({ board }) {
 			}
 			process.stdout.write(`${msg}\n`);
 		}
-		clearTimeout(timer);
-		rl.resume();
-		rl.prompt(false);
-		drawStats();
+		done();
 	});
 	let count = 0;
 	let pos;
