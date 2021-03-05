@@ -6,7 +6,7 @@ import jsonPlugin from '@rollup/plugin-json';
 import { minify } from 'terser';
 import babel from '@babel/standalone';
 import transformAsyncToPromises from 'babel-plugin-transform-async-to-promises';
-import asyncHelpers from 'babel-plugin-transform-async-to-promises/helpers-string.js';
+// import asyncHelpers from 'babel-plugin-transform-async-to-promises/helpers-string.js';
 import { fetch } from "./util.js";
 
 const MODULES_URL = 'http://www.espruino.com/modules/';
