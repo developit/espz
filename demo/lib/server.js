@@ -3,6 +3,34 @@ import { buffer } from './util.js';
 
 const TIMEOUT = 10000;
 
+const connections = [];
+
+function dropConnection(conn) {
+	const i = connections.indexOf(conn);
+	const last = connections.length - 1;
+	if (i < last) {
+		connections[i] = connections[last];
+		connections[last] = conn;
+	}
+	connections.pop();
+	conn.res = null;
+}
+
+function flushBrokenConnections() {
+	const now = Date.now();
+	const expired = now - TIMEOUT;
+	for (let i = connections.length; i--; ) {
+		const conn = connections[i];
+		if (conn.ts > expired) continue;
+		// connections.splice(i, 1);
+		try { conn.res.end(); } catch (e) {}
+		dropConnection(conn);
+		if (i < connections.length) i++;
+	}
+}
+
+let timer = setInterval(flushBrokenConnections, TIMEOUT);
+
 export default function createServer(routes) {
 	let server = http.createServer(handle);
 	try {
@@ -20,13 +48,10 @@ export default function createServer(routes) {
 			res.writeHead(403, { 'content-type': 'text/plain' });
 			return res.end('');
 		}
-		let timer = setTimeout(() => {
-			clearTimer();
-			try { res.end(); } catch (e) {}
-		}, TIMEOUT);
+		let conn = { ts: Date.now(), res };
 		function clearTimer() {
-			if (timer != null) clearTimeout(timer);
-			timer = null;
+			dropConnection(conn);
+			conn = res = req = fn = p = null;
 		}
 		let p = Promise.resolve();
 		if (req.method && !/^(GET|HEAD|OPTIONS)$/.test(req.method)) {

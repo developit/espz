@@ -46,6 +46,22 @@ export class Desk {
 			}
 		};
 		this.connect();
+
+		this._scheduleId = 0;
+		this.scheduledEvents = [];
+		this.scheduleTimer = setInterval(this.runSchedule.bind(this), 60 * 1000);
+	}
+
+	runSchedule() {
+		const now = Date.now();
+		for (let i=0; i<this.scheduledEvents.length; i++) {
+			const ev = this.scheduledEvents[i];
+			if (ev.time <= now) {
+				this.scheduledEvents.splice(i, 1);
+				this.goTo(ev.height);
+				return;
+			}
+		}
 	}
 
 	reconnect() {
@@ -111,6 +127,55 @@ export class Desk {
 			this.moveTimer = setInterval(frame, 500);
 		});
 	}
+
+	async goTo(presetOrHeight) {
+		if (typeof presetOrHeight === 'string') {
+			return this.memory(presetOrHeight.substring(1));
+		} else {
+			return this.goToHeight(presetOrHeight);
+		}
+	}
+
+	async schedule(height, time) {
+		time -= time % 60000;
+		for (let i = 0; i < this.scheduledEvents.length; i++) {
+			const ev = this.scheduledEvents[i];
+			if (ev.time === time) {
+				ev.height = height;
+				return { updated: ev };
+			}
+		}
+		const ev = {
+			id: ++this._scheduleId,
+			height,
+			time
+		};
+		this.scheduledEvents.push(ev);
+		return { scheduled: ev };
+	}
+
+	async goToForMinutes(height, minutes) {
+		const time = (Math.ceil(Date.now() / 60000) * 60000) + minutes * 60000;
+		const oldHeight = this.height;
+		this.goTo(height);
+		return this.schedule(oldHeight, time);
+	}
+
+	// async goToForTime(height, time) {
+	// 	time = Math.min(1, Math.round(time)) * 60 * 1000;
+	// 	this._previousHeight = this.height;
+	// 	this.goTo(height);
+	// 	this._routineTimer = setTimeout(this._restorePreviousHeight, time);
+	// }
+	// _restorePreviousHeight() {
+	// 	if (this._routineTimer) {
+	// 		clearTimeout(this._routineTimer);
+	// 		this._routineTimer = null;
+	// 	}
+	// 	const prev = this._previousHeight;
+	// 	this._previousHeight = undefined;
+	// 	return this.goToHeight(prev);
+	// }
 
 	_cancelMove() {
 		if (this.moveTimer != null) {
