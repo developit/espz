@@ -79,3 +79,27 @@ Options
 -v, --version    Displays current version
 -h, --help       Displays this message
 ```
+
+## Example Application
+
+`espz` includes ambient TypeScript definitions for Espruino's APIs and modules, which extend the official Espruino types with a bunch of things they're missing. The only thing that can be unclear from reading Espruino's docs and the TypeScript defintions is how best to initialize your code, since the technique varies depending on how you choose to flash (as boot code, versus executing the code immediately).
+
+My recommendation is to flash to bootcode via `espz send --boot --tail --address x:x:x:x`, and use `E.on('init')` to initialize your application after a short delay:
+
+```js
+import Wifi from 'Wifi';
+
+function start() {
+	// put your startup logic in here.
+	Wifi.connect('foo', { password: 'bar' }, (err) => {
+		Wifi.save();
+		// etc
+	});
+}
+
+try {
+	E.on('init', () => setTimeout(start, 1000));
+} catch (e) {}
+```
+
+> **Side Note:** the `.on()` mixin used by Espruino's API's doesn't seem to support multiple event handlers like it would imply. Register stuff up-front and delegate in your code instead.
