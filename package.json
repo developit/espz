@@ -1,6 +1,6 @@
 {
   "name": "espz",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Bundle and flash Espruino code, optimally.",
   "type": "module",
   "bin": "./dist/espz.cjs",
