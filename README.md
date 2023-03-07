@@ -1,5 +1,7 @@
 # espz
 
+https://npmjs.com/pacakge/espz
+
 `espz` is a simple CLI for interacting with Espruino devices.
 
 Both the REPL and flasher run your code through Babel to add modern syntax support with minimal overhead.
