@@ -3,6 +3,7 @@ import { promises as fs } from 'fs';
 import kleur from 'kleur';
 import { rollup } from 'rollup';
 import jsonPlugin from '@rollup/plugin-json';
+import nodeResolve from '@rollup/plugin-node-resolve';
 import { minify } from 'terser';
 import babel from '@babel/standalone';
 import transformAsyncToPromises from 'babel-plugin-transform-async-to-promises';
@@ -137,6 +138,9 @@ export async function compile({ board, files = ['index.js'], out = 'index.js', c
 					return `var exports={};export default exports;${before}\n${code}`;
 				}
 			},
+			nodeResolve({
+				preferBuiltins: false,
+			})
 			// {
 			// 	name: 'node_modules',
 			// 	async resolveId(id, importer) {
