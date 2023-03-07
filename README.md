@@ -8,6 +8,27 @@ Both the REPL and flasher run your code through Babel to add modern syntax suppo
 
 Flashed code is bundled and optimized via Rollup and Terser, so you can use ES Modules.
 
+## Getting Started
+
+In order to use this tool, you need to first flash Espruino onto your ESP8266:
+
+1. Download the firmware files from [espruino.com/EspruinoESP8266](http://www.espruino.com/EspruinoESP8266#firmware-updates)
+
+2. Plug in your device using a USB cable that supports data (it's ridiculous how many of them don't)
+
+3. Flash the firmware according to [these instructions](http://www.espruino.com/ESP8266_Flashing). For example, if you're on MacOS:
+    
+     ```sh
+    esptool.py --port /dev/tty.usbserial-* --baud 115200 write_flash --flash_freq 80m --flash_mode dio --flash_size 32m \
+    0x0000 "boot_v1.6.bin" 0x1000 espruino_esp8266_user1.bin 0x3FC000 esp_init_data_default.bin 0x3FE000 blank.bin
+    ```
+
+4. You can now send code to the device or [access a REPL](#repl) using espz.
+
+5. Once you've flashed code that [connects to your wifi network](https://github.com/developit/espz/blob/f3303ea279c9ed18cab313daca8e6e29076f359c/demo/homectrl/index.js#L97-L119), you can send code or launch the REPL over wifi via `--address HOSTNAME_OR_IP`.
+
+## Usage
+
 ### REPL
 
 The REPL is just like Espruino's REPL, except that it supports ES2017.
@@ -18,7 +39,7 @@ The REPL is just like Espruino's REPL, except that it supports ES2017.
 
 ```sh
 # connect to a local device:
-espz repl --address /dev/cu.usbserial1234
+espz repl --address /dev/cu.usbserial*
 
 # connect to an ESP8266 over TCP:
 espz repl --address 192.168.55.200
