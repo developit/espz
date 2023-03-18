@@ -1,6 +1,6 @@
 # espz
 
-https://npmjs.com/pacakge/espz
+https://www.npmjs.com/package/espz
 
 `espz` is a simple CLI for interacting with Espruino devices.
 
